@@ -1,0 +1,204 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "storageName": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 25,
+			"defaultValue": "[uniqueString( resourceGroup().id, deployment().name )]"
+        },
+		"appInsightsName": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 25,
+			"defaultValue": "[uniqueString( resourceGroup().id, deployment().name )]"
+        },
+		"functionAppName": {
+			"type": "string",
+            "minLength": 3,
+            "maxLength": 40,
+			"defaultValue": "[Concat('generated-function-app-', uniqueString( resourceGroup().id, deployment().name ))]"
+		},
+		"hostingPlanName": {
+			"type": "string",
+            "minLength": 3,
+            "maxLength": 25,
+			"defaultValue": "[Concat('asp-', uniqueString( resourceGroup().id, deployment().name ))]"
+		},
+		 "serviceBusNamespaceName": {
+			"type": "string",
+			"defaultValue": "[Concat('ns-', uniqueString( resourceGroup().id, deployment().name ))]"
+		},
+		"serviceBusQueueName": {
+			"type": "string",
+			"defaultValue": "[Concat('queue', uniqueString( resourceGroup().id, deployment().name ))]"
+		},
+		"sourceCodeRepositoryURL": {
+			"type": "string",
+			"defaultValue": "https://github.com/ahmad-hmoud/azure-functions-service-bus.git"
+		},
+		"sourceCodeBranch": {
+			"type": "string",
+			"defaultValue": "master"
+		},
+        "storageSku": {
+            "type": "string",
+            "allowedValues": [
+                "Standard_LRS",
+                "Standard_GRS",
+                "Standard_RAGRS",
+                "Standard_ZRS",
+                "Premium_LRS",
+                "Premium_ZRS",
+                "Standard_GZRS",
+                "Standard_RAGZRS"
+            ],
+			"defaultValue": "Standard_LRS"
+        }
+    },
+    "functions": [],
+    "variables": {},
+    "resources": [
+		{
+		   "apiVersion":"2017-04-01",
+		   "name":"[parameters('serviceBusNamespaceName')]",
+		   "type":"Microsoft.ServiceBus/Namespaces",
+		   "location":"[resourceGroup().location]",
+		   "sku":{
+			  "name":"Standard"
+		   },
+		   "properties":{
+			  
+		   },
+		   "resources":[
+			  {
+				 "apiVersion":"2017-04-01",
+				 "name":"[parameters('serviceBusQueueName')]",
+				 "type":"Queues",
+				 "dependsOn":[
+					"[concat('Microsoft.ServiceBus/namespaces/', parameters('serviceBusNamespaceName'))]"
+				 ],
+				 "properties":{
+					"lockDuration":"PT5M",
+					"maxSizeInMegabytes":1024,
+					"requiresDuplicateDetection":false,
+					"requiresSession":false,
+					"defaultMessageTimeToLive":"P10675199DT2H48M5.4775807S",
+					"deadLetteringOnMessageExpiration":false,
+					"duplicateDetectionHistoryTimeWindow":"PT10M",
+					"maxDeliveryCount":10,
+					"autoDeleteOnIdle":"P10675199DT2H48M5.4775807S",
+					"enablePartitioning":false,
+					"enableExpress":false
+				 }
+			  }
+		   ]
+		},
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2019-06-01",
+            "kind": "StorageV2",
+            "name": "[parameters('storageName')]",
+            "sku": {
+                "name": "[parameters('storageSku')]"
+            },
+            "location": "[resourceGroup().location]"
+        },
+		{
+            "apiVersion": "2015-05-01",
+            "name": "[parameters('appInsightsName')]",
+            "type": "Microsoft.Insights/components",
+            "kind": "web",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "Application_Type": "web",
+                "ApplicationId": "[parameters('appInsightsName')]"
+            }
+        },
+		{  
+		   "type":"Microsoft.Web/serverfarms",
+		   "apiVersion":"2016-09-01",
+		   "name":"[parameters('hostingPlanName')]",
+		   "location":"[resourceGroup().location]",
+		   "properties":{  
+			  "name":"[parameters('hostingPlanName')]",
+			  "computeMode":"Dynamic"
+		   },
+		   "sku":{  
+			  "name":"Y1",
+			  "tier":"Dynamic",
+			  "size":"Y1",
+			  "family":"Y",
+			  "capacity":0
+		   }
+		},
+		{
+			"apiVersion": "2016-08-01",
+			"type": "Microsoft.Web/sites",
+			"name": "[parameters('functionAppName')]",
+			"location": "[resourceGroup().location]",
+			"kind": "functionapp",
+			"dependsOn": [
+				"[resourceId('Microsoft.Storage/storageAccounts', parameters('storageName'))]",
+				"[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
+				"[resourceId('Microsoft.Web/serverfarms', parameters('hostingPlanName'))]",
+				"[resourceId('Microsoft.ServiceBus/Namespaces', parameters('serviceBusNamespaceName'))]"
+			],
+			"properties": {
+				"serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('hostingPlanName'))]",
+				"siteConfig": {
+					"appSettings": [
+						{
+						  "name": "AzureWebJobsStorage",
+						  "value": "[Concat('DefaultEndpointsProtocol=https;AccountName=',parameters('storageName'),';AccountKey=',listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageName')), providers('Microsoft.Storage', 'storageAccounts').apiVersions[0]).keys[0].value)]"
+						},
+						{
+						  "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+						  "value": "[Concat('DefaultEndpointsProtocol=https;AccountName=',parameters('storageName'),';AccountKey=',listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageName')), providers('Microsoft.Storage', 'storageAccounts').apiVersions[0]).keys[0].value)]"
+						},
+						{
+							"name": "WEBSITE_CONTENTSHARE",
+							"value": "[toLower(parameters('functionAppName'))]"
+						},
+						{
+							"name": "FUNCTIONS_WORKER_RUNTIME",
+							"value": "dotnet"
+						},
+						{
+							"name": "FUNCTIONS_EXTENSION_VERSION",
+							"value": "~2"
+						},
+						{
+							"name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+							"value": "[reference(resourceId('microsoft.insights/components/', parameters('appInsightsName')), '2015-05-01').InstrumentationKey]"
+						},
+						{
+							"name": "sbConnection",
+							"value": "[listKeys(resourceId(concat('Microsoft.ServiceBus/namespaces/AuthorizationRules'),parameters('serviceBusNamespaceName'),'RootManageSharedAccessKey'),'2015-08-01').primaryConnectionString]"
+						},
+						{
+							"name": "queueName",
+							"value": "[parameters('serviceBusQueueName')]"
+						}
+					]
+				}
+			},
+			"resources": [
+			{
+			   "apiVersion": "2016-08-01",
+			   "name":"web",
+			   "type":"sourcecontrols",
+			   "dependsOn":[
+				  "[resourceId('Microsoft.Web/sites/', parameters('functionAppName'))]"
+			   ],
+			   "properties":{
+				  "RepoUrl":"[parameters('sourceCodeRepositoryURL')]",
+				  "branch":"[parameters('sourceCodeBranch')]",
+				  "IsManualIntegration": true
+			   }
+			}]
+		}
+    ],
+    "outputs": {}
+}

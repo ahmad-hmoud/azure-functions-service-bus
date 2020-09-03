@@ -9,7 +9,7 @@ namespace ServiceBus
 {
     public static class Functions
     {
-        // myQueueItem can ber a string which will contain the message content
+        // myQueueItem can be of type string, in this case it will contain the message content
         [FunctionName("ServiceBusTrigger")]
         public static void Run([ServiceBusTrigger("%queueName%", Connection = "sbConnection")]
         Message myQueueItem,
