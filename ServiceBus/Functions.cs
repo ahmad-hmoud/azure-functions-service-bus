@@ -1,14 +1,38 @@
 using Microsoft.Azure.ServiceBus;
 using Microsoft.Azure.WebJobs;
+using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
 using System.Text;
+using System.IO;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using Newtonsoft.Json;
 
 namespace ServiceBus
 {
     public static class Functions
     {
+        [FunctionName("FunctionOne")]
+        public static async Task<IActionResult> Run(
+            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
+            ILogger log)
+        {
+            log.LogInformation("C# HTTP trigger function processed a request.");
+
+            string name = req.Query["name"];
+
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            dynamic data = JsonConvert.DeserializeObject(requestBody);
+            name = name ?? data?.name;
+
+            return name != null
+                ? (ActionResult)new OkObjectResult($"Hello from slot, {name}")
+                : new BadRequestObjectResult("Please pass a name on the query string or in the request body");
+        }
+        
         // myQueueItem can be of type string, in this case it will contain the message content
         [FunctionName("ServiceBusTrigger")]
         public static void Run([ServiceBusTrigger("%queueName%", Connection = "sbConnection")]
